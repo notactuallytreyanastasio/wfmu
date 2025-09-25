@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv
+
+# Archive data (comment out if you want to commit the archive)
+# wfmu_archive.db
+media/
+search_index/
+
+# Reports and exports
+archive_report.json
+wfmu_posts_export.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+temp/
