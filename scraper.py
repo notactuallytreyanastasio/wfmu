@@ -70,7 +70,7 @@ class WFMUBlogScraper:
             scraped_at=datetime.utcnow()
         )
 
-        title_elem = soup.find('h3', class_='title')
+        title_elem = soup.find('h3', class_='entry-header')
         if title_elem:
             post.title = title_elem.get_text(strip=True)
 
@@ -83,7 +83,7 @@ class WFMUBlogScraper:
             if date_elem:
                 post.published_date = self.parse_post_date(date_elem.get_text(strip=True))
 
-        content_div = soup.find('div', class_='blogbody')
+        content_div = soup.find('div', class_='entry-body')
         if content_div:
             post.content_text = content_div.get_text(separator='\n', strip=True)
 
@@ -158,7 +158,7 @@ class WFMUBlogScraper:
         soup = BeautifulSoup(html, 'lxml')
         post_urls = []
 
-        post_titles = soup.find_all('h3', class_='title')
+        post_titles = soup.find_all('h3', class_='entry-header')
         for title in post_titles:
             link = title.find('a')
             if link and link.get('href'):

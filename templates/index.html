@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WFMU Blog Archive</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <div class="header-content">
+                <h1>📻 WFMU Blog Archive</h1>
+                <p class="tagline">Preserving the legacy of freeform radio's greatest blog</p>
+                <div id="stats" class="stats"></div>
+            </div>
+        </header>
+
+        <nav class="main-nav">
+            <div class="search-container">
+                <input type="text"
+                       id="search-input"
+                       placeholder="Search posts, authors, content..."
+                       autocomplete="off">
+                <div id="search-results" class="search-dropdown"></div>
+            </div>
+        </nav>
+
+        <main>
+            <div class="view-toggle">
+                <button class="toggle-btn active" data-view="cards">📋 Card View</button>
+                <button class="toggle-btn" data-view="list">📝 List View</button>
+                <button class="toggle-btn" data-view="timeline">📅 Timeline</button>
+            </div>
+
+            <div id="posts-container" class="posts-grid">
+                <!-- Posts will be loaded here -->
+            </div>
+
+            <div id="pagination" class="pagination"></div>
+        </main>
+
+        <footer>
+            <p>WFMU Blog archived with ❤️ | <a href="#" id="about-link">About this archive</a></p>
+        </footer>
+    </div>
+
+    <!-- Post Preview Modal -->
+    <div id="post-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

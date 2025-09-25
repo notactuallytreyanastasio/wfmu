@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ post.title or 'Untitled' }} - WFMU Archive</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div id="post-viewer">
+        <header class="post-header">
+            <div class="header-content">
+                <a href="/" class="back-link">← Back to Archive</a>
+                <div class="view-switcher">
+                    <button class="view-btn active" data-view="modern">Modern View</button>
+                    <button class="view-btn" data-view="original">Original Blog</button>
+                </div>
+            </div>
+        </header>
+
+        <article id="modern-view" class="post-content">
+            <div class="post-meta">
+                <h1>{{ post.title or 'Untitled Post' }}</h1>
+                <div class="meta-info">
+                    {% if post.author %}<span class="author">By {{ post.author }}</span>{% endif %}
+                    {% if post.published_date %}<span class="date">{{ post.published_date.strftime('%B %d, %Y') }}</span>{% endif %}
+                </div>
+                {% if post.categories %}
+                <div class="categories">
+                    {% for cat in post.categories %}
+                    <span class="category-tag">{{ cat.name }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="post-body">
+                {% if post.content_markdown %}
+                    <div id="markdown-content" data-content="{{ post.content_markdown }}"></div>
+                {% elif post.content_text %}
+                    <div class="text-content">{{ post.content_text | safe }}</div>
+                {% else %}
+                    <p>No content available</p>
+                {% endif %}
+            </div>
+
+            {% if post.media_items %}
+            <div class="media-section">
+                <h3>Media Files</h3>
+                <div class="media-grid">
+                    {% for media in post.media_items %}
+                    <div class="media-item" data-type="{{ media.media_type }}">
+                        {% if media.media_type == 'image' %}
+                            {% if media.downloaded and media.local_path %}
+                                <img src="/media/{{ media.filename }}" alt="{{ media.alt_text or 'Image' }}" loading="lazy">
+                            {% else %}
+                                <img src="{{ media.original_url }}" alt="{{ media.alt_text or 'Image' }}" loading="lazy">
+                            {% endif %}
+                        {% elif media.media_type == 'audio' %}
+                            <div class="audio-player">
+                                🎵 <a href="{{ media.original_url }}" target="_blank">{{ media.original_url.split('/')[-1] }}</a>
+                                {% if media.downloaded and media.local_path %}
+                                    <audio controls>
+                                        <source src="/media/{{ media.filename }}" type="audio/mpeg">
+                                    </audio>
+                                {% endif %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if post.comments %}
+            <div class="comments-section">
+                <h3>Comments ({{ post.comments | length }})</h3>
+                <div class="comments-list">
+                    {% for comment in post.comments %}
+                    <div class="comment">
+                        <div class="comment-meta">
+                            <strong>{{ comment.author or 'Anonymous' }}</strong>
+                            {% if comment.date %}
+                            <span class="comment-date">{{ comment.date.strftime('%B %d, %Y') }}</span>
+                            {% endif %}
+                        </div>
+                        <div class="comment-body">{{ comment.content }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="post-footer">
+                <a href="{{ post.url }}" target="_blank" class="original-link">View on Original Site ↗</a>
+                <a href="/post/{{ post.post_id }}/original" class="original-view-link">View Original HTML</a>
+            </div>
+        </article>
+
+        <iframe id="original-view" src="/post/{{ post.post_id }}/original" style="display: none;"></iframe>
+    </div>
+
+    <script>
+        // View switcher
+        document.querySelectorAll('.view-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const view = btn.dataset.view;
+                document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                if (view === 'modern') {
+                    document.getElementById('modern-view').style.display = 'block';
+                    document.getElementById('original-view').style.display = 'none';
+                } else {
+                    document.getElementById('modern-view').style.display = 'none';
+                    document.getElementById('original-view').style.display = 'block';
+                }
+            });
+        });
+
+        // Parse markdown if available
+        const markdownEl = document.getElementById('markdown-content');
+        if (markdownEl) {
+            // Simple markdown to HTML (you could use a library like marked.js for better parsing)
+            const content = markdownEl.dataset.content;
+            const html = content
+                .replace(/\n\n/g, '</p><p>')
+                .replace(/\n/g, '<br>')
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+            markdownEl.innerHTML = '<p>' + html + '</p>';
+        }
+    </script>
+</body>
+</html>

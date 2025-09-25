@@ -10,3 +10,6 @@ Pillow>=10.0.0
 whoosh>=2.7.0
 click>=8.1.0
 tenacity>=8.2.0
+html2text>=2020.1.16
+flask>=2.3.0
+flask-cors>=4.0.0
