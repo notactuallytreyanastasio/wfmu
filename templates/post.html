@@ -14,6 +14,9 @@
                 <div class="view-switcher">
                     <button class="view-btn active" data-view="modern">Modern View</button>
                     <button class="view-btn" data-view="original">Original Blog</button>
+                    {% if post.published_date %}
+                    <a href="https://web.archive.org/web/{{ post.published_date.strftime('%Y%m%d') }}120000/{{ post.url }}" target="_blank" class="view-btn" style="text-decoration: none;">Archive.org ↗</a>
+                    {% endif %}
                 </div>
             </div>
         </header>
@@ -92,7 +95,11 @@
             {% endif %}
 
             <div class="post-footer">
+                {% if post.published_date %}
+                <a href="https://web.archive.org/web/{{ post.published_date.strftime('%Y%m%d') }}120000/{{ post.url }}" target="_blank" class="original-link">View on Archive.org ↗</a>
+                {% else %}
                 <a href="{{ post.url }}" target="_blank" class="original-link">View on Original Site ↗</a>
+                {% endif %}
                 <a href="/post/{{ post.post_id }}/original" class="original-view-link">View Original HTML</a>
             </div>
         </article>

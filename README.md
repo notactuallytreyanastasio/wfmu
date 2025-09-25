@@ -2,233 +2,358 @@
 
 A comprehensive archiving solution for preserving the WFMU blog (blog.wfmu.org) before it shuts down. This tool scrapes the entire blog history, downloads media files, parses content, creates a searchable archive, and provides a modern web interface for viewing the preserved content.
 
-## Features
-
-- **Complete Blog Scraping**: Archives all posts, pages, and categories
-- **Media Preservation**: Downloads all images, audio files, and other media
-- **Content Extraction**: Converts HTML to clean text and Markdown formats
-- **Full-Text Search**: Creates a searchable index using Whoosh
-- **Database Storage**: SQLite database for easy portability
-- **Integrity Verification**: Checks for missing posts and media files
-- **Export Options**: JSON export for further processing
-- **Web Viewer Interface**: Modern, responsive web interface with:
-  - Live search as you type
-  - Multiple view modes (Card, List, Timeline)
-  - Dual viewing: Modern redesign or original HTML preservation
-  - Media playback for archived audio files
-
-## Installation
+## 🚀 Quick Start
 
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd wfmu
-
-# Install dependencies
+# 1. Install dependencies
 pip install -r requirements.txt
-```
 
-## Quick Start
-
-### Archive the Blog
-
-To run the complete archiving process:
-
-```bash
-# Using the paginated scraper (recommended - faster)
+# 2. Start archiving the blog
 python scraper_paginated.py
 
-# Or use the all-in-one tool
-python archive_wfmu.py full-archive
+# 3. View the archive
+python wfmu_viewer_enhanced.py
+# Open http://localhost:8080
+
+# 4. View statistics
+python archive_stats.py
+# Open http://localhost:8085
 ```
 
-This will:
-1. Scrape all blog posts and pages
-2. Download all media files
-3. Parse content to extract clean text
-4. Build a searchable index
-5. Verify archive integrity
+## 📚 How It Works
 
-### View the Archive
+### Architecture Overview
 
-Once you have some posts archived, launch the web viewer:
+The WFMU Archive system consists of several components working together:
+
+```
+┌─────────────────────────────────────────────────┐
+│                 WFMU Blog Website                │
+│              (blog.wfmu.org - source)            │
+└─────────────────┬───────────────────────────────┘
+                  │ Scraping
+                  ▼
+┌─────────────────────────────────────────────────┐
+│           scraper_paginated.py                   │
+│   - Fetches posts via pagination                 │
+│   - Extracts metadata & content                  │
+│   - Identifies media files                       │
+└─────────────────┬───────────────────────────────┘
+                  │ Stores
+                  ▼
+┌─────────────────────────────────────────────────┐
+│           SQLite Database                        │
+│         (wfmu_archive.db)                        │
+│                                                  │
+│  Tables:                                         │
+│  - posts: Blog posts with content               │
+│  - media: Images, audio, video files            │
+│  - categories: Blog categories                  │
+│  - comments: User comments                      │
+│  - scrape_progress: Tracking                    │
+└──────┬──────────────────────┬───────────────────┘
+       │                      │
+       ▼                      ▼
+┌──────────────┐      ┌──────────────────┐
+│   Viewer     │      │ Media Downloader │
+│   (port 8080)│      │ download_images.py│
+└──────────────┘      └──────────────────┘
+```
+
+### Database Schema
+
+The entire archive is stored in a SQLite database (`wfmu_archive.db`) with the following structure:
+
+#### Posts Table
+```sql
+CREATE TABLE posts (
+    post_id VARCHAR PRIMARY KEY,      -- MD5 hash of URL
+    url VARCHAR UNIQUE NOT NULL,      -- Original blog URL
+    title TEXT,                       -- Post title
+    author VARCHAR,                   -- Author name
+    published_date DATETIME,          -- Publication date
+    raw_html TEXT,                    -- Original HTML
+    content_text TEXT,                -- Extracted text
+    content_markdown TEXT,            -- Markdown version
+    categories TEXT,                  -- JSON array
+    tags TEXT,                        -- JSON array
+    scrape_date DATETIME              -- When scraped
+)
+```
+
+#### Media Table
+```sql
+CREATE TABLE media (
+    id INTEGER PRIMARY KEY,
+    post_id VARCHAR,                  -- Links to posts.post_id
+    media_type VARCHAR,               -- 'image', 'audio', 'video'
+    original_url VARCHAR,             -- Source URL
+    local_path VARCHAR,               -- Where file is saved
+    filename VARCHAR,                 -- Local filename
+    alt_text TEXT,                    -- Image alt text
+    caption TEXT,                     -- Media caption
+    downloaded BOOLEAN,               -- Download status
+    download_error TEXT,              -- Error if failed
+    FOREIGN KEY (post_id) REFERENCES posts(post_id)
+)
+```
+
+## 🔧 Components
+
+### 1. Scraper (`scraper_paginated.py`)
+
+The main scraper that archives the blog:
 
 ```bash
-python viewer.py
+python scraper_paginated.py
 ```
 
-Then open your browser to: http://localhost:5000
+**Features:**
+- Uses pagination strategy (/page/2/, /page/3/, etc.)
+- Respects rate limits (1 second between requests)
+- Extracts all post metadata and content
+- Identifies all media files
+- Resumes from interruptions
+- Handles errors gracefully
 
-The viewer provides:
-- Browse all archived posts
-- Live search functionality
-- Toggle between modern and original HTML views
-- View and play archived media files
+**How it works:**
+1. Starts from the homepage
+2. Follows pagination links to get all posts
+3. For each post:
+   - Downloads HTML
+   - Extracts metadata (title, author, date)
+   - Parses content to text/markdown
+   - Identifies media files
+   - Stores in database
 
-## Usage
+### 2. Media Downloader (`download_images.py`)
 
-The tool provides several commands for different tasks:
-
-### Scraping Posts
+Downloads media files respectfully:
 
 ```bash
-# Scrape all posts
-python archive_wfmu.py scrape
+# Test with 10 images
+echo "test" | python download_images.py
 
-# Resume from last position
-python archive_wfmu.py scrape --resume
-
-# Only scrape category pages
-python archive_wfmu.py scrape --categories-only
+# Download all images (be respectful!)
+echo "yes" | python download_images.py
 ```
 
-### Downloading Media
+**Features:**
+- Rate limiting (0.5s between images)
+- Batch processing (100 images per batch)
+- 10-second pause between batches
+- Resume capability
+- Progress tracking
+
+**Current Status:**
+- 8,147 total images identified
+- 58 downloaded
+- 8,089 remaining
+
+### 3. Web Viewer (`wfmu_viewer_enhanced.py`)
+
+Modern web interface for browsing the archive:
 
 ```bash
-# Download all media files
-python archive_wfmu.py download-media
-
-# Retry failed downloads
-python archive_wfmu.py download-media --retry-failed
+python wfmu_viewer_enhanced.py
+# Open http://localhost:8080
 ```
 
-### Processing Content
+**Features:**
+- **Live Search**: Instant results as you type
+- **Browse by Date**: Year/month navigation
+- **Browse by Author**: Filter by blog authors
+- **Pagination**: 50 posts per page
+- **Dual View**: Modern redesign or original HTML
+- **Archive.org Links**: All external links use Wayback Machine
+
+### 4. Statistics Dashboard (`archive_stats.py`)
+
+Analytics and monitoring:
 
 ```bash
-# Parse HTML to extract clean text
-python archive_wfmu.py parse-content
-
-# Build search index
-python archive_wfmu.py build-index
+python archive_stats.py
+# Open http://localhost:8085
 ```
 
-### Searching the Archive
+**Shows:**
+- Total posts archived
+- Media file statistics
+- Timeline visualization
+- Author contributions
+- Archive completeness
+
+## 📊 Current Archive Status
+
+As of the last run:
+- **Posts**: 4,568 archived (2007-2015)
+- **Images**: 8,147 identified, 58 downloaded
+- **Audio**: 9,105 identified
+- **Authors**: Various contributors
+- **Date Range**: Missing 2003-2006 (pagination doesn't go that far back)
+
+## 🏗️ Building the Archive
+
+### Step 1: Initial Scraping
 
 ```bash
-# Search for posts
-python archive_wfmu.py search "music"
+# Start the scraper
+python scraper_paginated.py
 
-# Limit results
-python archive_wfmu.py search "radio show" --limit 20
+# This will:
+# 1. Create wfmu_archive.db if it doesn't exist
+# 2. Begin scraping from page 1
+# 3. Continue through all pages
+# 4. Extract posts, metadata, and identify media
+# 5. Can be interrupted and resumed
 ```
 
-### Verification and Statistics
+### Step 2: Download Media (Optional)
 
 ```bash
-# Show archive statistics
-python archive_wfmu.py stats
+# Download images (respectfully)
+python download_images.py
 
-# Verify archive integrity
-python archive_wfmu.py verify
-
-# Export posts to JSON
-python archive_wfmu.py export-json
+# Choose:
+# - "test" for 10 images
+# - "yes" for all images
+# - "no" to cancel
 ```
 
-## Database Schema
+### Step 3: View the Archive
 
-The archive uses SQLite with the following main tables:
+```bash
+# Start the viewer
+python wfmu_viewer_enhanced.py
 
-- **posts**: Raw HTML, parsed content, metadata
-- **categories**: Blog categories and post counts
-- **media**: Media files with download status
-- **comments**: User comments on posts
-- **scrape_progress**: Tracking scraping status
+# Features available at http://localhost:8080:
+# - Search posts
+# - Browse by year/month
+# - Browse by author
+# - View individual posts
+# - Access Archive.org versions
+```
 
-## File Structure
+### Step 4: Monitor Progress
+
+```bash
+# View statistics
+python archive_stats.py
+
+# Available at http://localhost:8085
+```
+
+## 🗂️ File Structure
 
 ```
 wfmu/
-├── wfmu_archive.db       # SQLite database with all posts
-├── media/                # Downloaded media files
+├── wfmu_archive.db           # Main SQLite database
+├── wfmu_archive_viewer.db    # Copy for viewer (avoids locks)
+├── media/                    # Downloaded media files
 │   ├── images/
 │   ├── audio/
-│   ├── video/
-│   └── documents/
-├── search_index/         # Whoosh search index
-├── templates/            # HTML templates for viewer
-│   ├── index.html       # Main browsing interface
-│   └── post.html        # Individual post viewer
-├── static/               # Static assets for viewer
-│   ├── css/style.css    # Modern UI styles
-│   └── js/app.js        # Interactive features
-├── scraper_paginated.py # Fast pagination-based scraper
-├── viewer.py            # Flask web application
-└── archive_report.json   # Verification report
+│   └── video/
+├── templates/                # HTML templates
+│   ├── index.html           # Main viewer interface
+│   └── post.html            # Individual post view
+├── static/                   # Static assets
+│   ├── css/style.css        # Styles
+│   └── js/app.js            # JavaScript
+├── scraper_paginated.py     # Main scraper
+├── download_images.py       # Image downloader
+├── wfmu_viewer_enhanced.py  # Web viewer
+├── archive_stats.py         # Statistics dashboard
+├── database.py              # Database models (SQLAlchemy)
+└── requirements.txt         # Python dependencies
 ```
 
-## Archive Statistics
+## 🔄 Database Operations
 
-The tool provides detailed statistics including:
-- Total posts archived
-- Media files downloaded
-- Date range of posts
-- Categories and authors
-- Comments preserved
+### Check Archive Status
+```python
+import sqlite3
+conn = sqlite3.connect('wfmu_archive.db')
+cur = conn.cursor()
 
-## Considerations
+# Total posts
+total = cur.execute("SELECT COUNT(*) FROM posts").fetchone()[0]
+print(f"Total posts: {total}")
 
-- **Respectful Scraping**: The tool includes delays between requests
-- **Incremental Updates**: Can resume from interruptions
-- **Error Handling**: Retries failed downloads
-- **Storage**: Full archive may require several GB of space
-- **Time**: Complete archiving may take several hours
+# Date range
+dates = cur.execute("""
+    SELECT MIN(published_date), MAX(published_date)
+    FROM posts WHERE published_date IS NOT NULL
+""").fetchone()
+print(f"Date range: {dates[0]} to {dates[1]}")
 
-## Output Formats
+# Media stats
+media = cur.execute("""
+    SELECT media_type, COUNT(*), SUM(downloaded)
+    FROM media GROUP BY media_type
+""").fetchall()
+for m in media:
+    print(f"{m[0]}: {m[1]} total, {m[2] or 0} downloaded")
+```
 
-The archived data can be accessed in multiple ways:
-
-1. **SQLite Database**: Direct SQL queries for analysis
-2. **JSON Export**: Structured data for web applications
-3. **Search Index**: Full-text search capabilities
-4. **Raw HTML**: Original post content preserved
-5. **Markdown**: Clean, portable text format
-
-## Viewer Features
-
-The web viewer (`viewer.py`) provides a modern interface to browse the archive:
-
-### Search
-- **Live Search**: Results appear instantly as you type
-- **Full-Text Search**: Search post titles, content, and authors
-- **Highlighted Matches**: Search terms are highlighted in results
-
-### View Modes
-- **Card View**: Visual grid layout with previews
-- **List View**: Compact list for scanning many posts
-- **Timeline View**: Posts grouped by month/year
-
-### Post Viewing
-- **Modern View**: Clean, readable redesign with:
-  - Formatted text and markdown rendering
-  - Embedded media players
-  - Category tags and metadata
-  - Comments section
-- **Original View**: Preserved HTML exactly as it appeared on the blog
-- **Seamless Switching**: Toggle between views with one click
-
-### Media Support
-- **Images**: Displayed inline, click to enlarge
-- **Audio**: Built-in MP3 player for archived audio
-- **Download Links**: Access original media files
-
-## Current Status
-
-The scraper runs continuously to archive the entire blog. You can monitor progress by checking the database:
-
+### Export Data
 ```bash
-python -c "from database import init_database, Post; s,_=init_database(); print(f'Posts archived: {s.query(Post).count()}')"
+# Export posts to JSON
+python archive_wfmu.py export-json
+
+# Creates archive_posts.json with all post data
 ```
 
-## Next Steps
+### Backup Database
+```bash
+# Create backup
+cp wfmu_archive.db wfmu_archive_backup_$(date +%Y%m%d).db
+```
 
-Once archived, you can:
-- Use the built-in viewer to browse and search
-- Export to static HTML for permanent hosting
-- Build custom applications using the SQLite database
-- Create data visualizations of blog history
-- Import into other content management systems
+## ⚠️ Important Notes
 
-## License
+1. **Be Respectful**: The scraper includes delays to avoid overwhelming WFMU's servers
+2. **Storage Requirements**: Full archive with media may require several GB
+3. **Time Requirements**: Complete archiving may take several hours
+4. **Incremental Updates**: The scraper can resume from interruptions
+5. **Database Locking**: The viewer uses a copy of the database to avoid conflicts
 
-This archiving tool is provided for preservation purposes. Please respect the original content creators and WFMU's copyright.
+## 🚦 Troubleshooting
+
+### Database Locked
+```bash
+# Create a copy for the viewer
+cp wfmu_archive.db wfmu_archive_viewer.db
+```
+
+### Missing Posts
+- The paginated scraper can only go back to around 2007
+- Earlier posts (2003-2006) may require different approach
+
+### Media Download Issues
+- Check `download_error` field in media table
+- Adjust rate limits if getting blocked
+- Some media URLs may no longer be valid
+
+### Viewer Not Showing Data
+- Ensure database has data: `sqlite3 wfmu_archive.db "SELECT COUNT(*) FROM posts"`
+- Check that `wfmu_archive_viewer.db` exists
+- Restart the viewer after database updates
+
+## 🎯 Next Steps
+
+1. **Complete Image Downloads**: 8,000+ images remaining
+2. **Audio Files**: Plan strategy for 9,000+ MP3 files
+3. **Missing Years**: Investigate accessing 2003-2006 posts
+4. **Export Options**: Static site generation for permanent hosting
+
+## 📝 License
+
+This archiving tool is provided for preservation purposes. Please respect the original content creators and WFMU's copyright. The archived content belongs to WFMU and its contributors.
+
+## 🙏 Acknowledgments
+
+Thanks to WFMU for decades of freeform radio and blog content. This archive ensures that the community's contributions are preserved for future generations.
+
+---
+
+**Remember**: Be a respectful archiver. Use appropriate delays and don't overwhelm the source servers.
