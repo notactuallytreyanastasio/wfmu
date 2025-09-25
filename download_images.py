@@ -16,7 +16,7 @@ import sys
 DB_PATH = 'wfmu_archive.db'
 MEDIA_DIR = Path('media/images')
 BATCH_SIZE = 100  # Images per batch
-DELAY_BETWEEN_IMAGES = 0.5  # Seconds between each image
+DELAY_BETWEEN_IMAGES = 0.1  # Seconds between each image
 DELAY_BETWEEN_BATCHES = 10  # Seconds between batches
 MAX_RETRIES = 3
 TIMEOUT = 30  # Seconds
