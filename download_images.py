@@ -92,8 +92,10 @@ def download_image(url, filename):
 
             # Update filename with extension if needed
             if not filename.endswith(f'.{ext}'):
-                if '.' in filename and filename.split('.')[-1] == 'unknown':
-                    filename = filename.replace('.unknown', f'.{ext}')
+                # Remove any existing extension including .unknown
+                if '.' in filename:
+                    base = filename.rsplit('.', 1)[0]
+                    filename = f"{base}.{ext}"
                 else:
                     filename = f"{filename}.{ext}"
 

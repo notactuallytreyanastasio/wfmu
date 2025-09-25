@@ -128,7 +128,7 @@ python scraper_paginated.py
 
 ### 2. Media Downloader (`download_images.py`)
 
-Downloads media files respectfully:
+Downloads image files respectfully:
 
 ```bash
 # Test with 10 images
@@ -139,18 +139,48 @@ echo "yes" | python download_images.py
 ```
 
 **Features:**
-- Rate limiting (0.5s between images)
+- Rate limiting (0.1s between images)
 - Batch processing (100 images per batch)
 - 10-second pause between batches
 - Resume capability
 - Progress tracking
 
 **Current Status:**
-- 8,147 total images identified
-- 58 downloaded
-- 8,089 remaining
+- 10,710 total images identified
+- 2,263+ downloaded (ongoing)
+- ~8,447 remaining
 
-### 3. Web Viewer (`wfmu_viewer_enhanced.py`)
+### 3. Audio Downloader (`download_audio.py`)
+
+Downloads MP3/audio files very respectfully (for future use):
+
+```bash
+# Test with 5 audio files
+echo "test" | python download_audio.py
+
+# Resume downloading where left off
+echo "resume" | python download_audio.py
+
+# Start full download (will take 3-4 days)
+echo "yes" | python download_audio.py
+```
+
+**Features:**
+- Very respectful rate limiting (2s between files)
+- Batch processing (50 files per batch)
+- 30-second pause between batches
+- Full resume capability - won't re-download
+- Progress tracking with size estimates
+- File size display during download
+
+**Current Status:**
+- 10,666 total audio files identified
+- 87 downloaded (637MB)
+- 10,579 remaining
+- Estimated ~77GB total storage needed
+- Estimated 3-4 days continuous runtime
+
+### 4. Web Viewer (`wfmu_viewer_enhanced.py`)
 
 Modern web interface for browsing the archive:
 

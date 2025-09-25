@@ -4,9 +4,10 @@ WFMU Archive Viewer - Enhanced with Sidebar Browsing
 Features: Autocomplete search, year/month browsing, author selection
 """
 
-from flask import Flask, render_template_string, request, jsonify
+from flask import Flask, render_template_string, request, jsonify, send_from_directory
 import sqlite3
 import math
+import os
 from urllib.parse import quote_plus
 from collections import defaultdict
 from datetime import datetime
@@ -44,6 +45,20 @@ HTML_TEMPLATE = '''
             font-size: 20px;
             color: white;
             display: inline;
+        }
+
+        header a.gallery-link {
+            color: white;
+            text-decoration: none;
+            margin-left: 20px;
+            font-size: 14px;
+            border: 1px solid white;
+            padding: 3px 8px;
+            border-radius: 3px;
+        }
+
+        header a.gallery-link:hover {
+            background: rgba(255,255,255,0.2);
         }
 
         .stats {
@@ -400,6 +415,7 @@ HTML_TEMPLATE = '''
 <body>
     <header>
         <h1>📻 WFMU Blog Archive</h1>
+        <a href="/gallery" class="gallery-link">📸 Image Gallery</a>
         <span class="stats">{{ total_posts }} posts archived</span>
     </header>
 
@@ -415,9 +431,8 @@ HTML_TEMPLATE = '''
                        autofocus>
                 <input type="hidden" name="year" value="{{ selected_year }}">
                 <input type="hidden" name="month" value="{{ selected_month }}">
-                <input type="hidden" name="author" value="{{ selected_author }}">
                 <button type="submit">Search</button>
-                {% if query or selected_year or selected_author %}
+                {% if query or selected_year %}
                 <a href="/"><button type="button" class="clear-search">Clear All</button></a>
                 {% endif %}
             </form>
@@ -451,19 +466,6 @@ HTML_TEMPLATE = '''
                 </div>
             </div>
 
-            <!-- Browse by Author -->
-            <div class="sidebar-section">
-                <h3>✍️ Browse by Author</h3>
-                <div class="content author-list">
-                    {% for author in authors %}
-                    <a href="/?author={{ author.name | urlencode }}"
-                       class="author-link {% if author.name == selected_author %}active{% endif %}">
-                        {{ author.name }}
-                        <span class="author-count">{{ author.count }}</span>
-                    </a>
-                    {% endfor %}
-                </div>
-            </div>
         </div>
 
         <div class="content-area">
@@ -473,7 +475,6 @@ HTML_TEMPLATE = '''
                 {% if query %}<strong>Search: "{{ query }}"</strong> • {% endif %}
                 {% if selected_year %}<strong>Year: {{ selected_year }}</strong>{% endif %}
                 {% if selected_month %}<strong> / {{ selected_month_name }}</strong>{% endif %}
-                {% if selected_author %} • <strong>Author: {{ selected_author }}</strong>{% endif %}
                 - Found {{ total_results }} result{% if total_results != 1 %}s{% endif %}
             </div>
             {% endif %}
@@ -514,7 +515,7 @@ HTML_TEMPLATE = '''
             </div>
             {% else %}
             <div class="no-results">
-                {% if query or selected_year or selected_author %}
+                {% if query or selected_year %}
                 No results found for your filters
                 {% else %}
                 No posts found
@@ -621,6 +622,37 @@ POST_TEMPLATE = '''
         .content p { margin-bottom: 1em; }
         a { color: #0066CC; }
         .back { margin-bottom: 20px; }
+        .view-options {
+            background: #f5f5f5;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        .view-options h3 {
+            margin-top: 0;
+            font-size: 14px;
+            color: #666;
+        }
+        .view-button {
+            display: inline-block;
+            padding: 8px 15px;
+            margin-right: 10px;
+            background: #FF6600;
+            color: white;
+            text-decoration: none;
+            border-radius: 3px;
+            font-size: 13px;
+        }
+        .view-button:hover {
+            background: #e55500;
+        }
+        .view-button.secondary {
+            background: #666;
+        }
+        .view-button.secondary:hover {
+            background: #555;
+        }
     </style>
 </head>
 <body>
@@ -630,6 +662,19 @@ POST_TEMPLATE = '''
         {% if post.author %}By {{ post.author }} • {% endif %}
         {% if post.date %}{{ post.date }}{% endif %}
     </div>
+
+    <div class="view-options">
+        <h3>View Options:</h3>
+        <a href="/post/{{ post.id }}/original" class="view-button">
+            🖼️ View Original Layout (as it appeared on WFMU)
+        </a>
+        {% if post.url %}
+        <a href="https://web.archive.org/web/2015/{{ post.url }}" class="view-button secondary" target="_blank">
+            🌐 View on Archive.org
+        </a>
+        {% endif %}
+    </div>
+
     <div class="content">
         {% if post.content %}
         {{ post.content | safe }}
@@ -637,9 +682,6 @@ POST_TEMPLATE = '''
         <p>No content available</p>
         {% endif %}
     </div>
-    {% if post.url %}
-    <p><a href="{{ post.url }}" target="_blank">View original post →</a></p>
-    {% endif %}
 </body>
 </html>
 '''
@@ -704,19 +746,6 @@ def get_archive_structure(conn):
 
     return archive_list
 
-def get_authors_list(conn):
-    """Get list of authors with post counts"""
-    cur = conn.cursor()
-
-    authors = cur.execute("""
-        SELECT author, COUNT(*) as count
-        FROM posts
-        WHERE author IS NOT NULL AND author != ''
-        GROUP BY author
-        ORDER BY count DESC, author
-    """).fetchall()
-
-    return [{'name': author[0], 'count': author[1]} for author in authors]
 
 @app.route('/api/search')
 def search():
@@ -780,7 +809,6 @@ def index():
     query = request.args.get('q', '').strip()
     selected_year = request.args.get('year', '').strip()
     selected_month = request.args.get('month', '').strip()
-    selected_author = request.args.get('author', '').strip()
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -803,9 +831,6 @@ def index():
             conditions.append("strftime('%Y', published_date) = ?")
             params.append(selected_year)
 
-    if selected_author:
-        conditions.append("author = ?")
-        params.append(selected_author)
 
     where_clause = " AND ".join(conditions) if conditions else "1=1"
 
@@ -826,9 +851,8 @@ def index():
     params.extend([POSTS_PER_PAGE, (page - 1) * POSTS_PER_PAGE])
     posts_data = cur.execute(posts_sql, params).fetchall()
 
-    # Get archive structure and authors for sidebar
+    # Get archive structure for sidebar
     archive_dates = get_archive_structure(conn)
-    authors = get_authors_list(conn)
 
     # Get total posts count
     total_posts = cur.execute("SELECT COUNT(*) FROM posts").fetchone()[0]
@@ -865,8 +889,6 @@ def index():
         filter_params.append(f"year={selected_year}")
     if selected_month:
         filter_params.append(f"month={selected_month}")
-    if selected_author:
-        filter_params.append(f"author={quote_plus(selected_author)}")
 
     filter_params_str = "&" + "&".join(filter_params) if filter_params else ""
 
@@ -886,10 +908,8 @@ def index():
         selected_year=selected_year,
         selected_month=selected_month,
         selected_month_name=selected_month_name,
-        selected_author=selected_author,
         page_range=page_range,
         archive_dates=archive_dates,
-        authors=authors,
         filter_params=filter_params_str,
         urlencode=quote_plus
     )
@@ -920,6 +940,7 @@ def view_post(post_id):
         formatted_content = None
 
     post = {
+        'id': post_data['post_id'],
         'title': post_data['title'],
         'author': post_data['author'],
         'url': post_data['url'],
@@ -929,6 +950,519 @@ def view_post(post_id):
 
     return render_template_string(POST_TEMPLATE, post=post)
 
+GALLERY_TEMPLATE = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Image Gallery - WFMU Archive</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: Georgia, serif;
+            background: #1a1a1a;
+            color: #fff;
+        }
+
+        header {
+            background: #FF6600;
+            border-bottom: 3px solid #333;
+            padding: 10px 20px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        header h1 {
+            font-size: 20px;
+            color: white;
+            display: inline;
+            margin-right: 20px;
+        }
+
+        .nav {
+            display: inline;
+        }
+
+        .nav a {
+            color: white;
+            text-decoration: none;
+            margin-right: 15px;
+            font-size: 14px;
+        }
+
+        .nav a:hover {
+            text-decoration: underline;
+        }
+
+        .filters {
+            background: #2a2a2a;
+            padding: 15px 20px;
+            border-bottom: 1px solid #444;
+        }
+
+        .filters select {
+            margin-right: 10px;
+            padding: 5px 10px;
+            background: #333;
+            color: white;
+            border: 1px solid #555;
+            border-radius: 3px;
+        }
+
+        .stats {
+            color: #ccc;
+            font-size: 13px;
+            margin-left: 20px;
+            display: inline;
+        }
+
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 20px;
+            padding: 20px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .image-item {
+            position: relative;
+            background: #2a2a2a;
+            border-radius: 8px;
+            overflow: hidden;
+            transition: transform 0.2s;
+            cursor: pointer;
+        }
+
+        .image-item:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 12px rgba(255, 102, 0, 0.3);
+        }
+
+        .image-item img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            display: block;
+        }
+
+        .image-info {
+            padding: 10px;
+            background: rgba(0,0,0,0.7);
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            transform: translateY(100%);
+            transition: transform 0.2s;
+        }
+
+        .image-item:hover .image-info {
+            transform: translateY(0);
+        }
+
+        .image-info .post-title {
+            font-size: 12px;
+            color: #FF6600;
+            margin-bottom: 3px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .image-info .post-date {
+            font-size: 11px;
+            color: #999;
+        }
+
+        .pagination {
+            text-align: center;
+            padding: 30px 20px;
+            background: #2a2a2a;
+            border-top: 1px solid #444;
+        }
+
+        .pagination a, .pagination span {
+            display: inline-block;
+            padding: 8px 12px;
+            margin: 0 3px;
+            background: #333;
+            color: #fff;
+            text-decoration: none;
+            border-radius: 3px;
+        }
+
+        .pagination .current {
+            background: #FF6600;
+        }
+
+        .pagination a:hover {
+            background: #FF6600;
+        }
+
+        .no-images {
+            text-align: center;
+            padding: 100px 20px;
+            color: #666;
+        }
+
+        .loading {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #FF6600;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🎙️ WFMU Image Gallery</h1>
+        <div class="nav">
+            <a href="/">← Back to Archive</a>
+        </div>
+        <div class="stats">
+            {{ total_images }} images {% if year_filter %}from {{ year_filter }}{% endif %}
+        </div>
+    </header>
+
+    <div class="filters">
+        <select id="yearFilter" onchange="filterImages()">
+            <option value="">All Years</option>
+            {% for year in years %}
+            <option value="{{ year[0] }}" {% if year[0] == year_filter %}selected{% endif %}>
+                {{ year[0] }} ({{ year[1] }} images)
+            </option>
+            {% endfor %}
+        </select>
+
+        <select id="monthFilter" onchange="filterImages()">
+            <option value="">All Months</option>
+            {% if year_filter %}
+                {% for month in months %}
+                <option value="{{ month[0] }}" {% if month[0] == month_filter %}selected{% endif %}>
+                    {{ month[1] }} ({{ month[2] }} images)
+                </option>
+                {% endfor %}
+            {% endif %}
+        </select>
+    </div>
+
+    <div class="loading" id="loading">Loading images...</div>
+
+    {% if images %}
+    <div class="gallery">
+        {% for image in images %}
+        <div class="image-item" onclick="window.location.href='/post/{{ image.post_id }}'">
+            <img src="/{{ image.local_path }}" alt="{{ image.alt_text or 'Image' }}"
+                 onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"200\" viewBox=\"0 0 200 200\"%3E%3Crect fill=\"%23333\" width=\"200\" height=\"200\"/%3E%3Ctext fill=\"%23999\" font-size=\"14\" x=\"50%25\" y=\"50%25\" text-anchor=\"middle\" dy=\".3em\"%3EImage not found%3C/text%3E%3C/svg%3E'">
+            <div class="image-info">
+                <div class="post-title">{{ image.post_title or 'Untitled Post' }}</div>
+                <div class="post-date">{{ image.post_date }}</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if total_pages > 1 %}
+    <div class="pagination">
+        {% if page > 1 %}
+        <a href="?page=1{{ filter_params }}">« First</a>
+        <a href="?page={{ page - 1 }}{{ filter_params }}">‹ Previous</a>
+        {% endif %}
+
+        {% for p in page_range %}
+            {% if p == page %}
+            <span class="current">{{ p }}</span>
+            {% else %}
+            <a href="?page={{ p }}{{ filter_params }}">{{ p }}</a>
+            {% endif %}
+        {% endfor %}
+
+        {% if page < total_pages %}
+        <a href="?page={{ page + 1 }}{{ filter_params }}">Next ›</a>
+        <a href="?page={{ total_pages }}{{ filter_params }}">Last »</a>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="no-images">
+        <h2>No images found</h2>
+        <p>{% if year_filter %}No images for this time period{% else %}No downloaded images in the archive{% endif %}</p>
+    </div>
+    {% endif %}
+
+    <script>
+        function filterImages() {
+            const year = document.getElementById('yearFilter').value;
+            const month = document.getElementById('monthFilter').value;
+
+            let url = '/gallery?';
+            if (year) url += 'year=' + year;
+            if (month) url += '&month=' + month;
+
+            document.getElementById('loading').style.display = 'block';
+            window.location.href = url;
+        }
+    </script>
+</body>
+</html>
+'''
+
+@app.route('/media/images/<path:filename>')
+def serve_image(filename):
+    """Serve images from the media directory"""
+    return send_from_directory('media/images', filename)
+
+@app.route('/gallery')
+def gallery():
+    """Image gallery view"""
+    page = request.args.get('page', 1, type=int)
+    year_filter = request.args.get('year', '')
+    month_filter = request.args.get('month', '')
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    # Build query conditions
+    conditions = ["m.downloaded = 1", "m.media_type = 'image'"]
+    params = []
+
+    if year_filter:
+        if month_filter:
+            conditions.append("strftime('%Y-%m', p.published_date) = ?")
+            params.append(f"{year_filter}-{int(month_filter):02d}")
+        else:
+            conditions.append("strftime('%Y', p.published_date) = ?")
+            params.append(year_filter)
+
+    where_clause = " AND ".join(conditions)
+
+    # Get total count
+    count_sql = f"""
+        SELECT COUNT(*)
+        FROM media m
+        JOIN posts p ON m.post_id = p.post_id
+        WHERE {where_clause}
+    """
+    total_images = cur.execute(count_sql, params).fetchone()[0]
+
+    # Get images with pagination
+    images_per_page = 48
+    images_sql = f"""
+        SELECT m.id, m.post_id, m.local_path, m.alt_text, m.caption,
+               p.title as post_title, p.published_date,
+               strftime('%Y-%m-%d', p.published_date) as post_date
+        FROM media m
+        JOIN posts p ON m.post_id = p.post_id
+        WHERE {where_clause}
+        ORDER BY p.published_date DESC, m.id DESC
+        LIMIT ? OFFSET ?
+    """
+    params.extend([images_per_page, (page - 1) * images_per_page])
+
+    images = []
+    for row in cur.execute(images_sql, params):
+        images.append({
+            'id': row['id'],
+            'post_id': row['post_id'],
+            'local_path': row['local_path'],
+            'alt_text': row['alt_text'],
+            'caption': row['caption'],
+            'post_title': row['post_title'],
+            'post_date': row['post_date']
+        })
+
+    # Get available years for filter
+    years = cur.execute("""
+        SELECT strftime('%Y', p.published_date) as year, COUNT(*) as count
+        FROM media m
+        JOIN posts p ON m.post_id = p.post_id
+        WHERE m.downloaded = 1 AND m.media_type = 'image'
+            AND p.published_date IS NOT NULL
+        GROUP BY year
+        ORDER BY year DESC
+    """).fetchall()
+
+    # Get months for selected year
+    months = []
+    if year_filter:
+        month_names = ['', 'January', 'February', 'March', 'April', 'May', 'June',
+                       'July', 'August', 'September', 'October', 'November', 'December']
+        months_data = cur.execute("""
+            SELECT strftime('%m', p.published_date) as month, COUNT(*) as count
+            FROM media m
+            JOIN posts p ON m.post_id = p.post_id
+            WHERE m.downloaded = 1 AND m.media_type = 'image'
+                AND strftime('%Y', p.published_date) = ?
+            GROUP BY month
+            ORDER BY month DESC
+        """, (year_filter,)).fetchall()
+
+        months = [(int(m[0]), month_names[int(m[0])], m[1]) for m in months_data]
+
+    conn.close()
+
+    # Pagination
+    total_pages = math.ceil(total_images / images_per_page)
+    page_range = get_page_range(page, total_pages)
+
+    # Build filter params for pagination
+    filter_params = []
+    if year_filter:
+        filter_params.append(f"&year={year_filter}")
+    if month_filter:
+        filter_params.append(f"&month={month_filter}")
+    filter_params_str = "".join(filter_params)
+
+    return render_template_string(
+        GALLERY_TEMPLATE,
+        images=images,
+        page=page,
+        total_pages=total_pages,
+        total_images=total_images,
+        page_range=page_range,
+        years=years,
+        months=months,
+        year_filter=year_filter,
+        month_filter=month_filter,
+        filter_params=filter_params_str
+    )
+
+@app.route('/post/<post_id>/original')
+def view_post_original(post_id):
+    """Serve the original HTML exactly as it was on the blog"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    # Get the raw HTML from the database
+    post_data = cur.execute("""
+        SELECT raw_html, title, url
+        FROM posts
+        WHERE post_id = ?
+    """, (post_id,)).fetchone()
+
+    conn.close()
+
+    if not post_data:
+        return "Post not found", 404
+
+    raw_html = post_data['raw_html']
+
+    # Create a full HTML page that preserves the original styling
+    # We'll inject the WFMU blog's original CSS and wrap the content
+    original_html = f'''<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>{post_data['title'] or 'WFMU Blog Post'} - Original View</title>
+    <base href="https://blog.wfmu.org/">
+
+    <!-- Original WFMU Blog Styles -->
+    <link rel="stylesheet" type="text/css" href="https://web.archive.org/web/20150101/http://blog.wfmu.org/styles-site.css">
+
+    <style>
+        /* Additional wrapper to ensure proper display */
+        body {{
+            margin: 0;
+            padding: 20px;
+            background: #fff;
+            font-family: Georgia, serif;
+        }}
+
+        /* Override any problematic styles */
+        .original-content {{
+            max-width: 800px;
+            margin: 0 auto;
+        }}
+
+        /* Navigation bar */
+        .archive-nav {{
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: #FF6600;
+            color: white;
+            padding: 10px 20px;
+            z-index: 10000;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            font-family: Arial, sans-serif;
+        }}
+
+        .archive-nav a {{
+            color: white;
+            text-decoration: none;
+            margin-right: 20px;
+        }}
+
+        .archive-nav a:hover {{
+            text-decoration: underline;
+        }}
+
+        /* Push content down to account for fixed nav */
+        body {{
+            padding-top: 60px;
+        }}
+
+        /* Fix any broken image links to use Archive.org */
+        img {{
+            max-width: 100%;
+            height: auto;
+        }}
+    </style>
+
+    <script>
+        // Redirect broken images to Archive.org
+        document.addEventListener('DOMContentLoaded', function() {{
+            var images = document.getElementsByTagName('img');
+            for (var i = 0; i < images.length; i++) {{
+                images[i].onerror = function() {{
+                    // Try Archive.org version
+                    if (!this.src.includes('web.archive.org')) {{
+                        var archiveUrl = 'https://web.archive.org/web/2015/' + this.src.replace(/^https?:\\/\\//, '');
+                        this.src = archiveUrl;
+                    }}
+                }};
+            }}
+
+            // Fix links to point to Archive.org
+            var links = document.getElementsByTagName('a');
+            for (var i = 0; i < links.length; i++) {{
+                var href = links[i].href;
+                if (href && href.includes('blog.wfmu.org') && !href.includes('web.archive.org')) {{
+                    links[i].href = 'https://web.archive.org/web/2015/' + href.replace(/^https?:\\/\\//, '');
+                    links[i].target = '_blank';
+                }}
+            }}
+        }});
+    </script>
+</head>
+<body>
+    <div class="archive-nav">
+        <a href="/post/{post_id}">← Back to Archive View</a>
+        <a href="/">Browse Archive</a>
+        <span style="float: right; font-size: 12px;">
+            Original from: <a href="https://web.archive.org/web/{post_data['url']}" target="_blank" style="text-decoration: underline;">
+                {post_data['url'].replace('https://blog.wfmu.org/', '')}
+            </a>
+        </span>
+    </div>
+
+    <div class="original-content">
+        {raw_html}
+    </div>
+</body>
+</html>'''
+
+    return original_html
+
 if __name__ == '__main__':
     print("\n" + "="*60)
     print("🎙️  WFMU BLOG ARCHIVE VIEWER - ENHANCED")
@@ -936,10 +1470,12 @@ if __name__ == '__main__':
     print("\nFeatures:")
     print("  ✓ Live autocomplete search")
     print("  ✓ Browse by Year/Month")
-    print("  ✓ Browse by Author")
     print("  ✓ Combined filtering")
     print("  ✓ Pagination (50 posts per page)")
-    print("\nOpen: http://localhost:8080")
+    print("  ✓ Image gallery at /gallery")
+    print("\nURLs:")
+    print("  Archive: http://localhost:8080")
+    print("  Gallery: http://localhost:8080/gallery")
     print("\nUsing database: wfmu_archive_viewer.db")
     print("="*60 + "\n")
 
